@@ -1,0 +1,250 @@
+#!/usr/bin/env python3
+"""
+obheartbeat.py — OBHeartbeat CLI for Obsidian Wiki Vault.
+
+Usage:
+    python3 obheartbeat.py <vault-path> [--check <check_id>]
+
+Output: JSON to stdout
+    {
+      "vault": "/Volumes/Binary HD/obsidian/Xiaoxian",
+      "timestamp": "2026-04-22T21:00:00",
+      "checks": [...],
+      "lint": {...},
+      "notifications": [...]
+    }
+"""
+from __future__ import annotations
+
+import sys
+import json
+import argparse
+from pathlib import Path
+from datetime import datetime, timezone
+from typing import Any
+
+# Import local modules
+from vault_utils import relative_to_vault
+from check_scanner import run_all_checks
+from wiki_lint import run_lint
+from index_generator import generate_missing_indexes
+from lint_state import (
+    load_lint_state,
+    save_lint_state,
+    ensure_issue,
+    prune_fixed_issues,
+    get_active_issues,
+    make_issue_id_custom,
+)
+
+MAX_NOTIFICATIONS_PER_TYPE = 2  # 每类只推 1-2 项
+
+
+def _safe_name(name: str) -> str:
+    """Escape a name so it can be used in an issue id."""
+    return name.replace("/", "__").replace(".", "_")
+
+
+def _issue_id(issue: dict[str, Any]) -> str:
+    """Build a deterministic issue id that includes target info for broken_link."""
+    issue_type = issue.get("type", "unknown")
+    rel_path = issue.get("path") or issue.get("source", "unknown")
+    base = make_issue_id_custom(issue_type, rel_path)
+    # For broken_link, append target_name so multiple broken links from the same source don't collide
+    if issue_type == "broken_link":
+        target = issue.get("target_name", "")
+        if target:
+            base = base + "__" + _safe_name(target)
+    return base
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="OBHeartbeat vault scanner")
+    parser.add_argument("vault", type=Path, help="Path to Obsidian vault")
+    parser.add_argument(
+        "--check", type=str, default=None,
+        help="Run only a specific check id (e.g. batch_compile_folder)"
+    )
+    parser.add_argument(
+        "--workspace", type=Path, default=None,
+        help="Path to agent workspace (for memory_to_wiki_extract check)"
+    )
+    args = parser.parse_args()
+
+    vault: Path = args.vault
+    if not vault.exists():
+        vault = Path(str(vault).replace("~", str(Path.home())))
+    if not vault.exists():
+        print(json.dumps({"error": f"Vault not found: {vault}"}))
+        sys.exit(1)
+
+    # Run checks
+    if args.check:
+        check_results = [_run_single_check(args.check, vault, args.workspace)]
+        if check_results[0] is None:
+            print(json.dumps({"error": f"Unknown check: {args.check}"}))
+            sys.exit(1)
+    else:
+        check_results = run_all_checks(vault, args.workspace)
+
+    # Run lint once and share between check_scanner (if wiki_lint check ran)
+    # and the top-level lint section
+    lint_result = run_lint(vault)
+
+    # Integrate lint_state: track issues, prune fixed, filter active
+    lint_result = _process_lint_state(vault, lint_result)
+
+    # Run index generator (auto-fix missing _index.md)
+    auto_fixed_indexes = generate_missing_indexes(vault)
+    if auto_fixed_indexes:
+        lint_result.setdefault("auto_fixed", []).extend(auto_fixed_indexes)
+
+    # Build notifications (rotation: limit per type)
+    notifications = _build_notifications(check_results, lint_result)
+
+    # Assemble output
+    output = {
+        "vault": str(vault),
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
+        "checks": [r for r in check_results if r.get("count", 0) > 0],
+        "lint": lint_result,
+        "notifications": notifications,
+    }
+
+    print(json.dumps(output, ensure_ascii=False, indent=2))
+
+
+def _run_single_check(check_id: str, vault: Path, workspace: Path | None) -> dict[str, Any] | None:
+    """Run a single check by id."""
+    from check_scanner import (
+        check_batch_compile_folder,
+        check_batch_compile_7days,
+        check_scheduled_pending,
+        check_optional_recompile,
+        check_undiscussed_raw,
+        check_memory_to_wiki_extract,
+        check_wiki_lint,
+    )
+    dispatch = {
+        "batch_compile_folder": lambda: check_batch_compile_folder(vault),
+        "batch_compile_7days": lambda: check_batch_compile_7days(vault),
+        "scheduled_pending": lambda: check_scheduled_pending(vault),
+        "optional_recompile": lambda: check_optional_recompile(vault),
+        "undiscussed_raw": lambda: check_undiscussed_raw(vault),
+        "memory_to_wiki_extract": lambda: check_memory_to_wiki_extract(vault, workspace),
+        "wiki_lint": lambda: check_wiki_lint(vault),
+    }
+    fn = dispatch.get(check_id)
+    return fn() if fn else None
+
+
+def _build_notifications(
+    checks: list[dict[str, Any]],
+    lint_result: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Build notifications grouped by type, limited to MAX_NOTIFICATIONS_PER_TYPE per group."""
+    by_type: dict[str, list[dict[str, Any]]] = {}
+    for ch in checks:
+        if ch.get("count", 0) > 0:
+            t = ch.get("type", "maintenance")
+            by_type.setdefault(t, []).append(ch)
+
+    # Add lint as maintenance if not already covered by check results
+    if lint_result.get("total_issues", 0) > 0:
+        has_lint_in_checks = any(
+            r.get("id") == "wiki_lint" and r.get("count", 0) > 0
+            for r in checks
+        )
+        if not has_lint_in_checks:
+            by_type.setdefault("maintenance", []).append({
+                "id": "wiki_lint",
+                "type": "maintenance",
+                "count": lint_result["total_issues"],
+                "items": lint_result.get("issues", []),
+                "message": lint_result.get("message", ""),
+                "action": "report",
+            })
+
+    notifications: list[dict[str, Any]] = []
+    for check_type, items in by_type.items():
+        # Limit to MAX_NOTIFICATIONS_PER_TYPE
+        limited = items[:MAX_NOTIFICATIONS_PER_TYPE]
+        note = "维护类,空闲时段推,每次只推1-2项" if check_type == "maintenance" else "讨论类,用户活跃时段推,每次只推1-2项"
+        notifications.append({
+            "priority": check_type,
+            "count": sum(it.get("count", 0) for it in limited),
+            "items": [
+                {"id": it["id"], "count": it.get("count", 0), "message": it.get("message", "")}
+                for it in limited
+            ],
+            "note": note,
+        })
+
+    return notifications
+
+
+def _process_lint_state(vault: Path, lint_result: dict[str, Any]) -> dict[str, Any]:
+    """Integrate lint results with persistent .lint-state.json.
+
+    Steps:
+      1. Load existing state
+      2. Ensure all current issues are tracked (new → pending)
+      3. Prune issues that no longer exist (pending → fixed, auto-clear)
+      4. Save updated state
+      5. Filter reported issues to only show active ones
+    """
+    state = load_lint_state(vault)
+    current_issue_ids: set[str] = set()
+
+    # Ensure each issue is tracked
+    for issue in lint_result.get("issues", []):
+        rel_path = issue.get("path") or issue.get("source", "unknown")
+        extra = {k: v for k, v in issue.items() if k not in ("type", "path", "source")}
+        issue_id = _issue_id(issue)
+        ensure_issue(vault, state, issue.get("type", "unknown"), rel_path, status="pending", extra=extra)
+        current_issue_ids.add(issue_id)
+
+    # Prune fixed issues
+    prune_fixed_issues(vault, state, current_issue_ids)
+
+    # Save state
+    save_lint_state(vault, state)
+
+    # Filter issues to only active ones
+    active = get_active_issues(state)
+    active_ids = {a["id"] for a in active}
+
+    filtered_issues = []
+    for issue in lint_result.get("issues", []):
+        issue_id = _issue_id(issue)
+        if issue_id in active_ids:
+            filtered_issues.append(issue)
+
+    # Recompute counts based on filtered issues
+    orphan_count = sum(1 for i in filtered_issues if i["type"] == "orphan_page")
+    broken_link_count = sum(1 for i in filtered_issues if i["type"] == "broken_link")
+    empty_count = sum(1 for i in filtered_issues if i["type"] == "empty_page")
+    stale_count = sum(1 for i in filtered_issues if i["type"] == "stale_content")
+    missing_index_count = sum(1 for i in filtered_issues if i["type"] == "missing_index")
+    missing_ref_count = sum(1 for i in filtered_issues if i["type"] == "missing_cross_reference")
+
+    # Update result
+    lint_result["issues"] = filtered_issues
+    lint_result["total_issues"] = len(filtered_issues)
+    lint_result["orphan_count"] = orphan_count
+    lint_result["broken_link_count"] = broken_link_count
+    lint_result["empty_count"] = empty_count
+    lint_result["stale_count"] = stale_count
+    lint_result["missing_index_count"] = missing_index_count
+    lint_result["missing_ref_count"] = missing_ref_count
+    lint_result["message"] = (
+        f"Wiki 检查完成：{orphan_count} 个孤儿页，{broken_link_count} 个悬空链接，"
+        f"{empty_count} 个空页面，{stale_count} 个过时内容，"
+        f"{missing_index_count} 个缺失索引，{missing_ref_count} 个缺失交叉引用"
+    )
+
+    return lint_result
+
+
+if __name__ == "__main__":
+    main()

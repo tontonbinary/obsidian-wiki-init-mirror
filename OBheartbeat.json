@@ -1,0 +1,244 @@
+{
+  "skill": "obsidian-wiki-init",
+  "name": "OBheartbeat",
+  "version": "1.1",
+  "description": "扫描 raw/ 目录,发现待处理的文档并通知 Agent",
+  "compile_prompt": {
+    "description": "LLM 编译 raw 文件到 wiki/ 时的分类决策指导",
+    "core_principle": "compile 不是'生成一个页面',而是'维护一个知识网络'。新来源进入时,LLM 读取 → 提取关键信息 → 整合到现有 wiki(更新实体页、修订摘要、标记矛盾)。单个来源可能触及 10-15 个 wiki 页面。重要约束:compile 必须由 Agent 执行,不能脚本自动处理--特别是对话/聊天记录涉及语义理解、多类别分类和知识网络维护,需要 Agent 的推理能力。脚本只负责扫描发现和提醒。",
+    "compile_pipeline": {
+      "phase_1": "概念提取 - 从所有 raw 来源提取实体/概念/关系,消除顺序依赖,合并跨来源共享的概念",
+      "phase_2": "页面生成 - 基于提取的概念生成/更新 wiki 页面,建立交叉引用",
+      "incremental": "只有变更的来源才通过 LLM,其余通过 hash 检测跳过",
+      "source_attribution": "每个 wiki 页面 frontmatter 必须有 sources 字段,段落标注来源标记 ^[filename.md]",
+      "index_requirement": "每个 wiki/ 子目录必须有 _index.md,汇总该目录下的页面,避免盲目扫描",
+      "memory_retrieval_format": "从 memory 提取到 wiki 后,在 memory 原文位置保留检索信息,格式: `> 已迁移至 [[wiki/概念/xxx]](YYYY-MM-DD)` 或 `→ wiki/概念/xxx(YYYY-MM-DD)`。这样 AGENTS.md 才能约定何时去 wiki 查询。"
+    },
+    "thinking_chain": "Step 1: 这是禁止性规则吗?→ 是 → 规则纪律/ → 否 → Step 2\nStep 2: 这有明确起止和阶段性成果吗?→ 是 → 项目/ → 否 → Step 3\nStep 3: 这是具体存在的人/物吗?→ 是 → 实体信息/ → 否 → Step 4\nStep 4: 这是 A vs B 或需要对比才能理解的吗?→ 是 → 参考与对比/ → 否 → 再问:这个内容对谁最重要?→ 对我(Agent) → 工具/ → 对团队/环境 → 环境与社会关系/ → 通用定义 → 知识概念/ → 踩坑经验 → 方法论/",
+    "article_format": {
+      "source_note": "source 字段只写 URL 纯文本(给机器/自动化读);正文顶部必须加一行可点击的 Markdown 链接 [原文链接](url)(给人读)",
+      "example": "[原文链接](https://mp.weixin.qq.com/s/x_Jtmk4-ThuNtZTGqJqncQ)"
+    },
+    "classification_table": {
+      "项目/": {
+        "定位": "有明确边界的工作",
+        "核心问题": "有阶段性成果吗?"
+      },
+      "工具/": {
+        "定位": "辅助手段",
+        "核心问题": "对我(Agent)最重要吗?"
+      },
+      "实体信息/": {
+        "定位": "具体存在",
+        "核心问题": "人/物可以枚举吗?"
+      },
+      "知识概念/": {
+        "定位": "通用定义",
+        "核心问题": "是通用理论吗?"
+      },
+      "方法论/": {
+        "定位": "踩坑经验",
+        "核心问题": "是经验沉淀吗?"
+      },
+      "规则纪律/": {
+        "定位": "禁止规则",
+        "核心问题": "违反有负面后果吗?"
+      },
+      "参考与对比/": {
+        "定位": "对比参考",
+        "核心问题": "需要对比才能理解吗?"
+      },
+      "环境与社会关系/": {
+        "定位": "角色关系",
+        "核心问题": "对上下文理解重要吗?"
+      }
+    },
+    "key_principles": [
+      "不能仅凭关键词判断:有'工作'二字不一定项目/,有'规范'二字不一定规则纪律/",
+      "看本质而非看标签:问'这个内容描述的是什么',而非'这个内容用了什么词'",
+      "规则纪律是'禁止性规则'(违反有负面后果),API限制是'事实性约束'→方法论/",
+      "绝大多数内容都有明确的唯一归属,不需要'最合适'判断"
+    ]
+  },
+  "checks": [
+    {
+      "id": "batch_compile_folder",
+      "name": "同一文件夹 ≥3 条待编译",
+      "description": "同一文件夹内从未编译的 md 文件 ≥3 条,提醒 Agent 编译到 wiki。脚本只扫描发现,compile 必须由 Agent 执行(涉及语义理解和多类别分类)",
+      "target": "{vault}/raw/",
+      "filter": "never_compiled == true AND 同一文件夹文件数 >= 3",
+      "action": "notify_agent",
+      "message": "raw/{folder}/ 有 {count} 个从未编译的文件,请 Agent 编译到 wiki(不需要和 user 讨论)",
+      "type": "maintenance",
+      "preferred_time": "off_hours",
+      "rotation_note": "维护类,空闲时段推,每次只推 1-2 项"
+    },
+    {
+      "id": "batch_compile_7days",
+      "name": "从未编译且 ≥7 天",
+      "description": "从未编译的 md 文件距今 ≥7 天,提醒 Agent 编译到 wiki。脚本只扫描发现,compile 必须由 Agent 执行(涉及语义理解和多类别分类)",
+      "target": "{vault}/raw/",
+      "filter": "never_compiled == true AND recorded 距今 >= 7天",
+      "action": "notify_agent",
+      "message": "有 {count} 个从未编译的 raw 文件已超过 7 天,请 Agent 编译到 wiki(不需要和 user 讨论)",
+      "type": "maintenance",
+      "preferred_time": "off_hours",
+      "rotation_note": "维护类,空闲时段推,每次只推 1-2 项"
+    },
+    {
+      "id": "scheduled_pending",
+      "name": "预定讨论但未讨论",
+      "description": "预定讨论时间已到但还未讨论。frontmatter 的 scheduled_note 字段记录了预约原因(如'等某项目完成后讨论'),通知时必须带上此原因,让 Agent 判断:项目已完成则主动找用户讨论;项目未完成则更新 scheduled 为新预估日期。",
+      "target": "{vault}/raw/",
+      "filter": "scheduled <= today AND discussed_1st is null",
+      "action": "notify_agent",
+      "message": "有 {count} 个预定讨论的 raw 文件未讨论:\n- {filename}\n  预约原因:{scheduled_note}\n  预约日期:{scheduled}\n请判断:项目已完成 → 主动找用户讨论;项目未完成 → 更新 scheduled 为新预估日期",
+      "type": "discussion",
+      "preferred_time": "active_hours",
+      "frontmatter_fields": {
+        "scheduled": "预定讨论日期(YYYY-MM-DD)",
+        "scheduled_note": "预约原因说明(如'等obsidian-wiki-init完成后讨论'),用于通知时携带上下文",
+        "discussed_1st": "首次讨论日期,讨论完成后填入",
+        "discussed_2nd": "再次讨论日期(可选),第二次讨论后填入"
+      },
+      "rotation_note": "讨论类,用户活跃时段推,每次只推 1-2 项"
+    },
+    {
+      "id": "optional_recompile",
+      "name": "可选第二次编译",
+      "description": "可以第二次编译,Agent 自己判断是否有价值",
+      "target": "{vault}/raw/",
+      "filter": "compiled_1st exists AND compiled_2nd is null AND stop_compiling != true",
+      "action": "notify_agent",
+      "message": "有 {count} 个文件可以第二次编译,Agent 可自行判断是否有价值",
+      "type": "discussion",
+      "preferred_time": "active_hours",
+      "rotation_note": "讨论类,用户活跃时段推,每次只推 1-2 项"
+    },
+    {
+      "id": "undiscussed_raw",
+      "name": "从未讨论的 raw 文件",
+      "description": "raw/ 中存在 discussed_1st 为空、且不符合 scheduled_pending 条件的文件,需要讨论但没有被预约。注:batch_compile_folder 和 batch_compile_7days 的文件属于自动编译范畴,不归此类。",
+      "target": "{vault}/raw/",
+      "filter": "discussed_1st is null AND scheduled is null AND stop_compiling != true",
+      "action": "notify_agent",
+      "message": "有 {count} 个 raw 文件从未讨论,建议找时间讨论",
+      "type": "discussion",
+      "preferred_time": "active_hours",
+      "excluded_from": [
+        "batch_compile_folder",
+        "batch_compile_7days"
+      ],
+      "rotation_note": "讨论类,用户活跃时段推,每次只推 1-2 项"
+    },
+    {
+      "id": "low_confidence",
+      "name": "低自信度 raw 文件需验证",
+      "description": "raw/ 中存在 confidence < 80 且尚未讨论的文件,必须找用户验证后才能编译。通知模板包含每个文件的 confidence 数值,便于 Agent 判断优先级",
+      "target": "{vault}/raw/",
+      "filter": "confidence < 80 AND discussed_1st is null AND scheduled is null AND stop_compiling != true",
+      "action": "notify_agent",
+      "message": "有 {count} 个 raw 文件自信度低于 80%,需要讨论验证:\n- {filename} (confidence: {confidence})\n请先确认信息准确性,再决定是否可以提升 confidence 后编译",
+      "type": "discussion",
+      "preferred_time": "active_hours",
+      "excluded_from": [
+        "batch_compile_folder",
+        "batch_compile_7days"
+      ],
+      "rotation_note": "讨论类,用户活跃时段推,每次只推 1-2 项"
+    },
+    {
+      "id": "memory_to_wiki_extract",
+      "name": "memory → wiki 定期提取",
+      "description": "每周检查 MEMORY.md 和近期 L1,发现稳定的规则/决策/教训,生成 raw 文件触发 compile",
+      "target": "{workspace}/memory/",
+      "filter": "MEMORY.md 中重复出现≥3次的模式、或 Binary 明确确认过的规则",
+      "action": "extract_to_raw",
+      "interval": "weekly",
+      "message": "发现 {count} 条可从 memory 提取到 wiki 的稳定知识,请生成 raw 文件触发 compile",
+      "type": "maintenance",
+      "preferred_time": "off_hours",
+      "rotation_note": "维护类,空闲时段推,轮转周期一周,每次只推 1-2 项"
+    },
+    {
+      "id": "wiki_lint",
+      "name": "Wiki 健康检查",
+      "description": "检查 wiki/ 健康状态。具体项:SCHEMA.md 待填充状态、孤儿页(无入链)、悬空链接(目标不存在)、空页面(无实质内容)、过时内容(90天未更新)、缺失交叉引用。",
+      "target": "{vault}/wiki/",
+      "filter": "schema_pending OR orphan_pages OR broken_links OR empty_pages OR stale_content OR missing_cross_references",
+      "action": "report",
+      "auto_fix": {
+        "enabled": true,
+        "rules": [
+          {
+            "condition": "schema_pending_count > 0",
+            "action": "agent_review",
+            "note": "SCHEMA.md 未完成讨论,Agent 必须与用户讨论 5 个问题"
+          },
+          {
+            "condition": "missing_index",
+            "action": "auto_generate",
+            "note": "自动生成 _index.md,无风险"
+          },
+          {
+            "condition": "orphan_count > 3",
+            "action": "agent_review",
+            "note": "Agent 排查孤儿页原因"
+          },
+          {
+            "condition": "broken_link_count > 5",
+            "action": "agent_review",
+            "note": "Agent 排查悬空链接"
+          },
+          {
+            "condition": "empty_count > 2",
+            "action": "agent_review",
+            "note": "Agent 确认是否删除空页面"
+          },
+          {
+            "condition": "stale_count > 0",
+            "action": "human_confirm",
+            "note": "过时内容必须人工确认,不可自动删除"
+          }
+        ]
+      },
+      "lint_state": {
+        "file": "{vault}/.lint-state.json",
+        "description": "记录 lint 问题的状态,避免重复报告同样的问题",
+        "states": [
+          "new",
+          "pending",
+          "fixed",
+          "ignored",
+          "deferred"
+        ],
+        "transitions": {
+          "new → pending": "脚本首次发现问题,加入 state 并报告",
+          "pending → fixed": "Agent 修复后,下次扫描确认消除 → 自动从 state 移除",
+          "pending → ignored": "Agent 判断无需修复(如 index 页面本身就是孤儿)→ 手动改 state 为 ignored",
+          "pending → deferred": "Agent 无法修复,需人类确认 → 手动改 state 为 deferred,设下次提醒日期"
+        },
+        "auto_rules": {
+          "fixed_auto_clear": "修复后下次扫描自动消除,不需要 Agent 手动改 state",
+          "ignored_keep": "保留在 state 中,不再报告",
+          "deferred_reminder": "7天后重新报告提醒 Agent"
+        }
+      },
+      "message": "Wiki 检查完成:{schema_pending_count} 个 SCHEMA.md 待填充,{orphan_count} 个孤儿页,{broken_link_count} 个悬空链接,{empty_count} 个空页面,{stale_count} 个过时内容,{missing_ref_count} 个缺失交叉引用",
+      "type": "maintenance",
+      "preferred_time": "off_hours",
+      "rotation_note": "维护类,空闲时段推,每次只推 1-2 项"
+    },
+    {
+      "id": "raw_status_summary",
+      "name": "Raw 目录状态概览",
+      "description": "按状态分类显示 raw 文件：已完成/未编译待讨论/预约讨论/需再次讨论。已完成指已编译且不需要再讨论的项，脚本只扫描发现，帮助 Agent 了解 raw 目录整体状态。",
+      "target": "{vault}/raw/",
+      "action": "run_script",
+      "script": "python3 $SKILL_DIR/scripts/raw_index.py {vault}",
+      "message": "Raw 目录状态概览",
+      "type": "status",
+      "preferred_time": "on_demand"
+    }
+  ]
+}
