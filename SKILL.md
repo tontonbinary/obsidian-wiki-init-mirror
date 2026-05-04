@@ -51,6 +51,9 @@ variables:
 1. **必须写 source frontmatter** — 编译 raw → wiki 时，必须写 `source: <原始文件路径>`
 2. **Raw 最少保留 7 天** — 编译后不可立即删除 raw 文件
 3. **违规后果** — 漏写 source 或提前删除 raw 会被 Lint 检测并报错
+4. **compile 前必须读** — 执行 compile 前必须先读：
+   - `references/wiki-index-format.md` — 索引格式规范
+   - `references/compile-pipeline.md` — 完整编译流程
 
 ### ⚠️ MEMORY.md 不适合提取到 Wiki 的内容
 
