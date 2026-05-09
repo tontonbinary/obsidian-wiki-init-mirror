@@ -250,6 +250,9 @@ vault 的 SCHEMA.md 是该 vault 的"宪法"，包含：
 
 ## Obsidian 核心插件配置标准
 
+> ⚠️ **本配置已固化到 `init_vault.py`** — 创建 vault 时自动生效，无需手动配置。
+> 2026-05-09 小娴与 Binary 逐一讨论确认。
+
 创建 vault 时，`init_vault.py` 会自动写入 `.obsidian/` 配置。以下是 Agent 相关插件的开/关规则：
 
 ### Agent 必须关注的插件（已固化到 init_vault.py）
@@ -286,6 +289,11 @@ bookmarks, quick-switcher, command-palette, slash-commands, search, graph-view, 
 - `core-plugins.json` — 插件开关
 - `note-composer.json` — 合并提示/Extract 行为（`extractBehavior: "link"`）
 - `app.json` — 链接格式（`useWikiLinks: true`）、新文件位置（`raw/`）、附件路径（`outputs/`）
+
+### note-composer 配置理由
+
+- `extractBehavior: "link"` — 链接到新笔记优于插入存放，原文干净语义清晰，Agent 处理时上下文更少
+- `askBeforeMerging: false` — 避免交互阻塞
 
 ---
 

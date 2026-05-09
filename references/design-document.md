@@ -361,6 +361,7 @@ tags: [#标签1, #标签2]
 
 > 2026-05-09 小娴与 Binary 逐一讨论确认
 > 配置已固化到 `init_vault.py`，创建 vault 时自动生效
+> **最终配置标准见 SKILL.md「Obsidian 核心插件配置标准」章节**
 
 ### 讨论结论
 
@@ -524,6 +525,7 @@ def lint_vault(vault_path):
 
 > 2026-05-09 小娴与 Binary 逐一讨论确认
 > 配置已固化到 `init_vault.py`，创建 vault 时自动生效
+> **最终配置标准见 SKILL.md「Obsidian 核心插件配置标准」章节**
 
 ### 讨论结论
 
