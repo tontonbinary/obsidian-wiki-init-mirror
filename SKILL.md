@@ -297,6 +297,48 @@ bookmarks, quick-switcher, command-palette, slash-commands, search, graph-view, 
 
 ---
 
+## 文件操作规范
+
+### 删除文件前必须检查引用
+
+**规则**：Agent 删除任何 `.md` 文件前，**必须**先检查是否有其他文件引用该文件。
+
+**原因**：
+- Obsidian 不会自动删除引用，链接会变为"悬空链接"
+- 悬空链接会导致 lint 报错，影响 Wiki 健康度
+- 提前检查可以避免后续修复成本
+
+**操作步骤**：
+1. 搜索引用：`grep -r "\[\[文件名\]\]" wiki/ raw/`
+2. 判断处理方式：
+   - 引用文件也需要更新 → 先更新引用，再删除
+   - 引用文件可以保留悬空 → 标记 `#待修复`，再删除
+   - 无引用 → 直接删除
+3. 记录操作到 `log.md`
+
+**示例**：
+```bash
+# 检查引用
+grep -r "\[\[旧笔记\]\]" wiki/ raw/
+
+# 有引用时：更新引用文件，替换为 [[新笔记]] 或删除链接
+# 然后删除文件
+rm wiki/旧笔记.md
+
+# 记录到 log.md
+echo "| 2026-05-09 | 删除 | wiki/旧笔记.md（已更新引用）|" >> log.md
+```
+
+### 重命名/移动文件
+
+**规则**：Obsidian 自动维护链接，Agent **不需要**额外操作。
+
+**注意**：
+- 确保 `app.json` 中 `alwaysUpdateLinks: true`（默认开启）
+- 批量重命名时，等待 Obsidian 完成索引更新（约几秒）
+
+---
+
 ## 前提条件
 
 - obsidian-cli 已安装：`brew install yakitrak/yakitrak/obsidian-cli`
