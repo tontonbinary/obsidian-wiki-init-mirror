@@ -175,6 +175,26 @@ python3 -m obheartbeat check <vault-path> [--check-id <check_id>] [--json]
 
 ---
 
+## ⚠️ 操作规程
+
+### 批量重构前手动触发快照备份
+
+**规则**：Agent 执行批量笔记重构前，**必须**手动触发一次 File Recovery 快照备份。
+
+**原因**：
+- 批量操作（移动、合并、重命名笔记）风险高，一旦出错影响面广
+- File Recovery 是"后悔药"机制，有快照才能回滚
+- 符合"不可逆操作前先备份"的责任心原则
+
+**操作方式**：
+- Obsidian 自动快照间隔为 5 分钟（默认值）
+- 批量重构前，Agent 可通过操作确保最新状态已被快照捕获
+- 或等待一个快照周期（5分钟）后再执行批量操作
+
+**记录位置**：此规则属于 skill 使用者须知，记在 skill.md（本文档）而非 SCHEMA.md。
+
+---
+
 ## vault SCHEMA.md
 
 vault 的 SCHEMA.md 是该 vault 的"宪法"，包含：
@@ -225,6 +245,47 @@ vault 的 SCHEMA.md 是该 vault 的"宪法"，包含：
 | schema-discussion-guide.md | **SCHEMA.md 讨论指南（含完整流程）** |
 | OBheartbeat.json | 7项P0检查完整定义 |
 | design-document.md | 完整设计方案 |
+
+---
+
+## Obsidian 核心插件配置标准
+
+创建 vault 时，`init_vault.py` 会自动写入 `.obsidian/` 配置。以下是 Agent 相关插件的开/关规则：
+
+### Agent 必须关注的插件（已固化到 init_vault.py）
+
+| 插件 | 状态 | 原因 |
+|------|------|------|
+| backlink | ✅ 开启 | 双链核心，Agent 解析入链 |
+| outgoing-link | ✅ 开启 | 双链核心，Agent 解析出链 |
+| note-composer | ✅ 开启 | 合并/拆分笔记，`askBeforeMerging: false` |
+| tag-pane | ✅ 保持 | Agent 可用 frontmatter/tags |
+| outline | ✅ 保持 | 语义层有价值 |
+| workspaces | ✅ 保持 | 多工作区 |
+| file-recovery | ✅ 保持 | 批量重构前手动触发快照 |
+| bases | ✅ 开启 | 资源占用低，未来可能有用 |
+
+### Agent 无关的插件（已关闭）
+
+| 插件 | 状态 | 原因 |
+|------|------|------|
+| canvas | ❌ 关闭 | 空间布局 Agent 无法解析 |
+| daily-notes | ❌ 关闭 | 与 Memory L1 独立，避免混乱 |
+| zk-prefixer | ❌ 关闭 | Agent 直接写文件，不需要 |
+| templates | ❌ 关闭 | Agent 直接生成内容，不需要 |
+| markdown-importer | ❌ 关闭 | 一次性导入工具，需要时手动开启 |
+| publish | ❌ 关闭 | Agent 不涉及发布 |
+| sync | ❌ 关闭 | 使用 iCloud/本地存储 |
+
+### 纯 UI 层插件（人类自行决定）
+
+bookmarks, quick-switcher, command-palette, slash-commands, search, graph-view, page-preview, word-count, web-viewer, audio-recorder, slides, random-note, file-explorer — 不影响 Agent 使用。
+
+### 配置文件位置
+
+- `core-plugins.json` — 插件开关
+- `note-composer.json` — 合并提示/Extract 行为（`extractBehavior: "link"`）
+- `app.json` — 链接格式（`useWikiLinks: true`）、新文件位置（`raw/`）、附件路径（`outputs/`）
 
 ---
 

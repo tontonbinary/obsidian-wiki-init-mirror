@@ -357,6 +357,39 @@ tags: [#标签1, #标签2]
 
 ---
 
+## 附录：Obsidian 核心插件配置历史
+
+> 2026-05-09 小娴与 Binary 逐一讨论确认
+> 配置已固化到 `init_vault.py`，创建 vault 时自动生效
+
+### 讨论结论
+
+**Agent 相关插件**：
+- canvas 关闭（空间布局 Agent 无法解析）
+- daily-notes 关闭（与 Memory L1 独立，避免混乱）
+- zk-prefixer 关闭（Agent 直接写文件）
+- templates 关闭（Agent 直接生成内容）
+- markdown-importer 关闭（一次性工具，需要时手动开启）
+- publish 关闭（Agent 不涉及发布）
+- sync 关闭（使用 iCloud/本地存储）
+- note-composer 开启，`askBeforeMerging: false`，`extractBehavior: "link"`
+- tag-pane/outline/backlink/outgoing-link/workspaces/file-recovery 保持开启
+- bases 开启（资源占用低，未来可能有用）
+
+**note-composer 配置理由**：
+- `extractBehavior: "link"` — 链接到新笔记优于插入存放，原文干净语义清晰，Agent 处理时上下文更少
+- `askBeforeMerging: false` — 避免交互阻塞
+
+**纯 UI 层插件**：不影响 Agent，人类自行决定开/关
+
+### 配置文件位置
+
+- `core-plugins.json` — 插件开关
+- `note-composer.json` — 合并提示/Extract 行为
+- `app.json` — 链接格式、新文件位置、附件路径
+
+---
+
 ## 七、核心运作原则
 
 ### 7.1 先记录，后整理
@@ -484,3 +517,36 @@ def lint_vault(vault_path):
 ---
 
 > 以上为小娴与 Binary 截至 2026-04-21 的历史讨论成果。**最终设计以 OBheartbeat.json 为准**。Mautoer 实现时请结合完整资料自主设计。
+
+---
+
+## 附录：Obsidian 核心插件配置历史
+
+> 2026-05-09 小娴与 Binary 逐一讨论确认
+> 配置已固化到 `init_vault.py`，创建 vault 时自动生效
+
+### 讨论结论
+
+**Agent 相关插件**：
+- canvas 关闭（空间布局 Agent 无法解析）
+- daily-notes 关闭（与 Memory L1 独立，避免混乱）
+- zk-prefixer 关闭（Agent 直接写文件）
+- templates 关闭（Agent 直接生成内容）
+- markdown-importer 关闭（一次性工具，需要时手动开启）
+- publish 关闭（Agent 不涉及发布）
+- sync 关闭（使用 iCloud/本地存储）
+- note-composer 开启，`askBeforeMerging: false`，`extractBehavior: "link"`
+- tag-pane/outline/backlink/outgoing-link/workspaces/file-recovery 保持开启
+- bases 开启（资源占用低，未来可能有用）
+
+**note-composer 配置理由**：
+- `extractBehavior: "link"` — 链接到新笔记优于插入存放，原文干净语义清晰，Agent 处理时上下文更少
+- `askBeforeMerging: false` — 避免交互阻塞
+
+**纯 UI 层插件**：不影响 Agent，人类自行决定开/关
+
+### 配置文件位置
+
+- `core-plugins.json` — 插件开关
+- `note-composer.json` — 合并提示/Extract 行为
+- `app.json` — 链接格式、新文件位置、附件路径

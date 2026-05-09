@@ -366,6 +366,68 @@ description: {vault_name} 的 LLM Wiki 结构化知识库
 """)
         result["created_files"].append(log_path)
         
+        # .obsidian/ — Obsidian core plugin configurations
+        obsidian_dir = os.path.join(vault_path, ".obsidian")
+        os.makedirs(obsidian_dir, exist_ok=True)
+        result["created_dirs"].append(obsidian_dir)
+
+        core_plugins = {
+            "backlink": True,
+            "note-composer": True,
+            "outgoing-link": True,
+            "tag-pane": True,
+            "outline": True,
+            "workspaces": True,
+            "file-recovery": True,
+            "canvas": False,
+            "daily-notes": False,
+            "zk-prefixer": False,
+            "templates": False,
+            "markdown-importer": False,
+            "publish": False,
+            "sync": False,
+            "bookmarks": True,
+            "quick-switcher": True,
+            "command-palette": True,
+            "slash-commands": True,
+            "search": True,
+            "graph-view": True,
+            "page-preview": True,
+            "word-count": True,
+            "web-viewer": True,
+            "audio-recorder": True,
+            "slides": True,
+            "random-note": True,
+            "file-explorer": True,
+            "bases": True
+        }
+        core_plugins_path = os.path.join(obsidian_dir, "core-plugins.json")
+        with open(core_plugins_path, "w", encoding="utf-8") as f:
+            json.dump(core_plugins, f, indent=2, ensure_ascii=False)
+        result["created_files"].append(core_plugins_path)
+
+        note_composer = {
+            "askBeforeMerging": False,
+            "dontAskAgain": True,
+            "extractBehavior": "link"
+        }
+        note_composer_path = os.path.join(obsidian_dir, "note-composer.json")
+        with open(note_composer_path, "w", encoding="utf-8") as f:
+            json.dump(note_composer, f, indent=2, ensure_ascii=False)
+        result["created_files"].append(note_composer_path)
+
+        app_config = {
+            "newFileLocation": "folder",
+            "newFileFolderPath": "raw",
+            "attachmentFolderPath": "outputs",
+            "useMarkdownLinks": False,
+            "useWikiLinks": True
+        }
+        app_config_path = os.path.join(obsidian_dir, "app.json")
+        with open(app_config_path, "w", encoding="utf-8") as f:
+            json.dump(app_config, f, indent=2, ensure_ascii=False)
+        result["created_files"].append(app_config_path)
+
         # README.md — Quick reference (replaces old CLAUDE.md)
         readme_path = os.path.join(vault_path, "README.md")
         with open(readme_path, "w", encoding="utf-8") as f:
